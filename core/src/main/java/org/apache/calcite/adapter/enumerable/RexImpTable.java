@@ -176,6 +176,7 @@ import static org.apache.calcite.sql.fun.SqlLibraryOperators.FORMAT_TIME;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.FORMAT_TIMESTAMP;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.FROM_BASE32;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.FROM_BASE64;
+import static org.apache.calcite.sql.fun.SqlLibraryOperators.FROM_HEX;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.ILIKE;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.JSON_DEPTH;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.JSON_INSERT;
@@ -242,6 +243,7 @@ import static org.apache.calcite.sql.fun.SqlLibraryOperators.TIME_TRUNC;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.TO_BASE32;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.TO_BASE64;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.TO_CHAR;
+import static org.apache.calcite.sql.fun.SqlLibraryOperators.TO_HEX;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.TRANSLATE3;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.TRUNC;
 import static org.apache.calcite.sql.fun.SqlLibraryOperators.TRY_CAST;
@@ -491,6 +493,8 @@ public class RexImpTable {
       defineMethod(FROM_BASE64, BuiltInMethod.FROM_BASE64.method, NullPolicy.STRICT);
       defineMethod(TO_BASE32, BuiltInMethod.TO_BASE32.method, NullPolicy.STRICT);
       defineMethod(FROM_BASE32, BuiltInMethod.FROM_BASE32.method, NullPolicy.STRICT);
+      defineMethod(TO_HEX, BuiltInMethod.TO_HEX.method, NullPolicy.STRICT);
+      defineMethod(FROM_HEX, BuiltInMethod.FROM_HEX.method, NullPolicy.STRICT);
       defineMethod(MD5, BuiltInMethod.MD5.method, NullPolicy.STRICT);
       defineMethod(SHA1, BuiltInMethod.SHA1.method, NullPolicy.STRICT);
       defineMethod(SHA256, BuiltInMethod.SHA256.method, NullPolicy.STRICT);
@@ -1410,7 +1414,7 @@ public class RexImpTable {
       final Primitive p = Primitive.of(compType);
       final boolean isMin = info.aggregation().kind == SqlKind.ARG_MIN;
       final Object inf = p == null ? null : (isMin ? p.max : p.min);
-      //acc[1] = isMin ? {max value} : {min value};
+      // acc[1] = isMin ? {max value} : {min value};
       reset.currentBlock().add(
           Expressions.statement(
               Expressions.assign(reset.accumulator().get(1),
@@ -2853,9 +2857,9 @@ public class RexImpTable {
       final Expression argValue = argValueList.get(0);
 
       final Expression e;
-      //Special case for implementing unary minus with BigDecimal type
-      //for other data type(except BigDecimal) '-' operator is OK, but for
-      //BigDecimal, we should call negate method of BigDecimal
+      // Special case for implementing unary minus with BigDecimal type
+      // for other data type(except BigDecimal) '-' operator is OK, but for
+      // BigDecimal, we should call negate method of BigDecimal
       if (expressionType == ExpressionType.Negate && argValue.type == BigDecimal.class
           && null != backupMethodName) {
         e = Expressions.call(argValue, backupMethodName);

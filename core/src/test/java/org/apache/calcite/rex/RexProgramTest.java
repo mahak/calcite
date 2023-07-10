@@ -1145,7 +1145,7 @@ class RexProgramTest extends RexProgramTestBase {
     checkSimplifyFilter(
         and(gt(literal(1), aRef), gt(literal(5), aRef)),
         RelOptPredicateList.EMPTY,
-        "<(?0.a, 1)");
+        ">(1, ?0.a)");
 
     // condition "1 > a && a > 5" yields false
     checkSimplifyFilter(
@@ -1601,6 +1601,68 @@ class RexProgramTest extends RexProgramTestBase {
             ne(literal(0), vInt())),
         "OR(null, <>(0, ?0.int0))",
         "<>(0, ?0.int0)",
+        "true");
+  }
+
+  /** Unit test for
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-5780">[CALCITE-5780]
+   * Simplify '1 > x OR 1 <= x OR x IS NULL' to TRUE</a>. */
+  @Test void testSimplifyOrTermsWithReverseOrderComparison() {
+    final RelDataType intType = typeFactory.createSqlType(SqlTypeName.INTEGER);
+    final RelDataType rowType = typeFactory.builder()
+        .add("a", intType).nullable(true)
+        .build();
+
+    final RexDynamicParam range = rexBuilder.makeDynamicParam(rowType, 0);
+    final RexNode aRef = rexBuilder.makeFieldAccess(range, 0);
+
+    // "1 > a or 1 <= a or a is null" ==> "true"
+    checkSimplifyFilter(
+        or(gt(literal(1), aRef),
+            le(literal(1), aRef),
+            isNull(aRef)),
+        "true");
+
+    // "1 <= a or 1 > a or a is null" ==> "true"
+    checkSimplifyFilter(
+        or(le(literal(1), aRef),
+            gt(literal(1), aRef),
+            isNull(aRef)),
+        "true");
+
+    // "a is null or 1 > a or 1 <= a" ==> "true"
+    checkSimplifyFilter(
+        or(isNull(aRef),
+            gt(literal(1), aRef),
+            le(literal(1), aRef)),
+        "true");
+
+    // "2 > a or 0 < a or a is null" ==> "true"
+    checkSimplifyFilter(
+        or(gt(literal(2), aRef),
+            lt(literal(0), aRef),
+            isNull(aRef)),
+        "true");
+
+    // "1 > a or a >= 1 or a is null" ==> "true"
+    checkSimplifyFilter(
+        or(gt(literal(1), aRef),
+            ge(aRef, literal(1)),
+            isNull(aRef)),
+        "true");
+
+    // "1 <= a or a < 1 or a is null" ==> "true"
+    checkSimplifyFilter(
+        or(le(literal(1), aRef),
+            lt(aRef, literal(1)),
+            isNull(aRef)),
+        "true");
+
+    // "a >= 1 or 1 > a or a is null" ==> "true"
+    checkSimplifyFilter(
+        or(ge(aRef, literal(1)),
+            gt(literal(1), aRef),
+            isNull(aRef)),
         "true");
   }
 
@@ -2457,6 +2519,79 @@ class RexProgramTest extends RexProgramTestBase {
   @Test void testSimplifyCastIsNull2() {
     checkSimplifyUnchanged(isNull(cast(vVarcharNotNull(), tInt(false))));
   }
+
+  /** Unit test for
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-5769">[CALCITE-5769]
+   * Optimizing 'CAST(e AS t) IS NOT NULL' to 'e IS NOT NULL'</a>. */
+  @Test void testSimplifyCastIsNull3() {
+    // "(cast A as bigint) IS NULL" when A is int and A is not null
+    // ==>
+    // "false"
+    checkSimplify(isNull(cast(vIntNotNull(), tBigInt(false))), "false");
+    // "(cast A as smallint) IS NULL" when A is int and A is not null
+    // ==>
+    // "(cast A as smallint) IS NULL"
+    checkSimplifyUnchanged(isNull(cast(vIntNotNull(), tSmallInt(false))));
+    // "(cast A as varbinary) IS NULL" when A is varchar and A is not null
+    // ==>
+    // "(cast A as varbinary) IS NULL"
+    checkSimplifyUnchanged(isNotNull(cast(vVarcharNotNull(), tVarbinary(false))));
+  }
+
+  /** Unit test for
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-5769">[CALCITE-5769]
+   * Optimizing 'CAST(e AS t) IS NOT NULL' to 'e IS NOT NULL'</a>. */
+  @Test void testSimplifyCastIsNull4() {
+    // "(cast A as bigint) IS NULL" when A is int and A is nullable
+    // ==>
+    // "A IS NULL"
+    checkSimplify(isNull(cast(vInt(), tBigInt(true))), "IS NULL(?0.int0)");
+    // "(cast A as smallint) IS NULL" when A is int and A is nullable
+    // ==>
+    // "(cast A as smallint) IS NULL"
+    checkSimplifyUnchanged(isNull(cast(vInt(), tSmallInt(true))));
+    // "(cast A as varbinary) IS NULL" when A is varchar and A is nullable
+    // ==>
+    // "(cast A as varbinary) IS NULL"
+    checkSimplifyUnchanged(isNotNull(cast(vVarchar(), tVarbinary(true))));
+  }
+
+  /** Unit test for
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-5769">[CALCITE-5769]
+   * Optimizing 'CAST(e AS t) IS NOT NULL' to 'e IS NOT NULL'</a>. */
+  @Test void testSimplifyCastIsNotNull() {
+    // "(cast A as bigint) IS NOT NULL" when A is int and A is not null
+    // ==>
+    // "true"
+    checkSimplify(isNotNull(cast(vIntNotNull(), tBigInt(false))), "true");
+    // "(cast A as smallint) IS NOT NULL" when A is int and A is not null
+    // ==>
+    // "(cast A as smallint) IS NOT NULL"
+    checkSimplifyUnchanged(isNotNull(cast(vIntNotNull(), tSmallInt(false))));
+    // "(cast A as varbinary) IS NOT NULL" when A is varchar and A is not null
+    // ==>
+    // "(cast A as varbinary) IS NOT NULL"
+    checkSimplifyUnchanged(isNotNull(cast(vVarcharNotNull(), tVarbinary(false))));
+  }
+
+  /** Unit test for
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-5769">[CALCITE-5769]
+   * Optimizing 'CAST(e AS t) IS NOT NULL' to 'e IS NOT NULL'</a>. */
+  @Test void testSimplifyCastIsNotNull2() {
+    // "(cast A as bigint) IS NOT NULL" when A is int and A is nullable
+    // ==>
+    // "A IS NOT NULL"
+    checkSimplify(isNotNull(cast(vInt(), tBigInt(true))), "IS NOT NULL(?0.int0)");
+    // "(cast A as smallint) IS NOT NULL" when A is int and A is nullable
+    // ==>
+    // "(cast A as smallint) IS NOT NULL"
+    checkSimplifyUnchanged(isNotNull(cast(vInt(), tSmallInt(true))));
+    // "(cast A as varbinary) IS NOT NULL" when A is varchar and A is nullable
+    // ==>
+    // "(cast A as varbinary) IS NOT NULL"
+    checkSimplifyUnchanged(isNotNull(cast(vVarchar(), tVarbinary(true))));
+  }
+
 
   @Test void checkSimplifyDynamicParam() {
     checkSimplify(isNotNull(lt(vInt(0), vInt(1))),
