@@ -50,6 +50,7 @@ import org.apache.commons.codec.binary.Base32;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.codec.language.Soundex;
+import org.apache.commons.text.similarity.LevenshteinDistance;
 
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
@@ -63,6 +64,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
@@ -105,6 +108,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BinaryOperator;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.apache.calcite.linq4j.Nullness.castNonNull;
@@ -142,6 +146,9 @@ public class SqlFunctions {
   private static final Soundex SOUNDEX = new Soundex();
 
   private static final int SOUNDEX_LENGTH = 4;
+
+  private static final LevenshteinDistance LEVENSHTEIN_DISTANCE =
+      LevenshteinDistance.getDefaultInstance();
 
   private static final Pattern FROM_BASE64_REGEXP = Pattern.compile("[\\t\\n\\r\\s]");
 
@@ -688,6 +695,11 @@ public class SqlFunctions {
     return buf.reverse().toString();
   }
 
+  /** SQL LEVENSHTEIN(string1, string2) function. */
+  public static int levenshtein(String string1, String string2) {
+    return LEVENSHTEIN_DISTANCE.apply(string1, string2);
+  }
+
   /** SQL ASCII(string) function. */
   public static int ascii(String s) {
     return s.isEmpty()
@@ -900,6 +912,80 @@ public class SqlFunctions {
     } catch (CharacterCodingException ex) {
       throw RESOURCE.charsetEncoding(s, charset.name()).ex();
     }
+  }
+
+  /** SQL {@code PARSE_URL(urlStr, partToExtract, keyToExtract)} function. */
+  public static @Nullable String parseUrl(@Nullable String urlStr,
+      @Nullable String partToExtract, @Nullable String keyToExtract) {
+    if (partToExtract == null || !partToExtract.equals("QUERY")) {
+      return null;
+    }
+
+    String query = parseUrl(urlStr, partToExtract);
+    if (query == null) {
+      return null;
+    }
+
+    Pattern p = Pattern.compile("(&|^)" + keyToExtract + "=([^&]*)");
+    Matcher m = p.matcher(query);
+    return m.find() ? m.group(2) : null;
+  }
+
+  /** SQL {@code PARSE_URL(urlStr, partToExtract)} function. */
+  public static @Nullable String parseUrl(@Nullable String urlStr,
+      @Nullable String partToExtract) {
+    if (urlStr == null || partToExtract == null) {
+      return null;
+    }
+
+    URI uri;
+    try {
+      uri = new URI(urlStr);
+    } catch (URISyntaxException e) {
+      return null;
+    }
+
+    String extractValue;
+    PartToExtract part;
+    try {
+      part = PartToExtract.valueOf(partToExtract);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+
+    switch (part) {
+    case HOST:
+      extractValue = uri.getHost();
+      break;
+    case PATH:
+      extractValue = uri.getRawPath();
+      break;
+    case QUERY:
+      extractValue = uri.getRawQuery();
+      break;
+    case REF:
+      extractValue = uri.getRawFragment();
+      break;
+    case PROTOCOL:
+      extractValue = uri.getScheme();
+      break;
+    case FILE:
+      if (uri.getRawQuery() != null) {
+        extractValue = uri.getRawPath() + "?" + uri.getRawQuery();
+      } else {
+        extractValue = uri.getRawPath();
+      }
+      break;
+    case AUTHORITY:
+      extractValue = uri.getRawAuthority();
+      break;
+    case USERINFO:
+      extractValue = uri.getRawUserInfo();
+      break;
+    default:
+      extractValue = null;
+    }
+    return extractValue;
   }
 
   /** SQL {@code RTRIM} function applied to string. */
@@ -1617,6 +1703,85 @@ public class SqlFunctions {
     }
 
     throw notArithmetic("*", b0, b1);
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to long values. */
+  public static @Nullable Long safeMultiply(long b0, long b1) {
+    try {
+      return Math.multiplyExact(b0, b1);
+    } catch (ArithmeticException e) {
+      return null;
+    }
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to long and BigDecimal values. */
+  public static @Nullable BigDecimal safeMultiply(long b0, BigDecimal b1) {
+    BigDecimal ans = BigDecimal.valueOf(b0).multiply(b1);
+    return safeDecimal(ans) ? ans : null;
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to BigDecimal and long values. */
+  public static @Nullable BigDecimal safeMultiply(BigDecimal b0, long b1) {
+    BigDecimal ans = b0.multiply(BigDecimal.valueOf(b1));
+    return safeDecimal(ans) ? ans : null;
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to BigDecimal values. */
+  public static @Nullable BigDecimal safeMultiply(BigDecimal b0, BigDecimal b1) {
+    BigDecimal ans = b0.multiply(b1);
+    return safeDecimal(ans) ? ans : null;
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to double and long values. */
+  public static @Nullable Double safeMultiply(double b0, long b1) {
+    double ans = b0 * b1;
+    return safeDouble(ans) || !Double.isFinite(b0) ? ans : null;
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to long and double values. */
+  public static @Nullable Double safeMultiply(long b0, double b1) {
+    double ans = b0 * b1;
+    return safeDouble(ans) || !Double.isFinite(b1) ? ans : null;
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to double and BigDecimal values. */
+  public static @Nullable Double safeMultiply(double b0, BigDecimal b1) {
+    double ans = b0 * b1.doubleValue();
+    return safeDouble(ans) || !Double.isFinite(b0) ? ans : null;
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to BigDecimal and double values. */
+  public static @Nullable Double safeMultiply(BigDecimal b0, double b1) {
+    double ans = b0.doubleValue() * b1;
+    return safeDouble(ans) || !Double.isFinite(b1) ? ans : null;
+  }
+
+  /** SQL <code>SAFE_MULTIPLY</code> function applied to double values. */
+  public static @Nullable Double safeMultiply(double b0, double b1) {
+    double ans = b0 * b1;
+    boolean isFinite = Double.isFinite(b0) && Double.isFinite(b1);
+    return safeDouble(ans) || !isFinite ? ans : null;
+  }
+
+  /** Returns whether a BigDecimal value is safe (that is, has not overflowed).
+   * According to BigQuery, BigDecimal overflow occurs if the precision is greater
+   * than 76 or the scale is greater than 38. */
+  private static boolean safeDecimal(BigDecimal b) {
+    return b.scale() <= 38 && b.precision() <= 76;
+  }
+
+  /** Returns whether a double value is safe (that is, has not overflowed). */
+  private static boolean safeDouble(double d) {
+    // If the double is positive and falls between the MIN and MAX double values,
+    // overflow has not occurred. If the double is negative and falls between the
+    // negated MIN and MAX double values, overflow has not occurred. Otherwise,
+    // overflow has occurred. Important to note that 'Double.MIN_VALUE' refers to
+    // minimum positive value.
+    if (d < Double.MAX_VALUE && d > Double.MIN_VALUE) {
+      return true;
+    } else {
+      return d > -Double.MAX_VALUE && d < -Double.MIN_VALUE;
+    }
   }
 
   private static RuntimeException notArithmetic(String op, Object b0,
@@ -4590,6 +4755,18 @@ public class SqlFunctions {
   /** Type of argument passed into {@link #flatProduct}. */
   public enum FlatProductInputType {
     SCALAR, LIST, MAP
+  }
+
+  /** Type of part to extract passed into {@link #parseUrl}. */
+  public enum PartToExtract {
+    HOST,
+    PATH,
+    QUERY,
+    REF,
+    PROTOCOL,
+    FILE,
+    AUTHORITY,
+    USERINFO;
   }
 
 }

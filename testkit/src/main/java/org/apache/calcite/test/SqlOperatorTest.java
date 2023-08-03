@@ -3961,6 +3961,97 @@ public class SqlOperatorTest {
     f.checkNull("ASCII(cast(null as varchar(1)))");
   }
 
+  @Test void testParseUrl() {
+    final SqlOperatorFixture f0 = fixture()
+        .setFor(SqlLibraryOperators.PARSE_URL);
+    f0.checkFails("^parse_url('http://calcite.apache.org/path1', 'HOST')^",
+        "No match found for function signature PARSE_URL\\(<CHARACTER>, <CHARACTER>\\)",
+        false);
+    final Consumer<SqlOperatorFixture> consumer = f -> {
+      // test with each valid partToExtract
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'HOST')",
+          "calcite.apache.org",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'PATH')",
+          "/path1/p.php",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/%20p.php?k1=v1&k2=v2#Ref1',"
+              + " 'PATH')",
+          "/path1/%20p.php",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'QUERY')",
+          "k1=v1&k2=v2",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'REF')",
+          "Ref1",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'QUERY', 'k2')",
+          "v2",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'QUERY', 'k1')",
+          "v1",
+          "VARCHAR NOT NULL");
+      f.checkNull("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " 'QUERY', 'k3')");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'FILE')",
+          "/path1/p.php?k1=v1&k2=v2",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php',"
+              + " 'FILE')",
+          "/path1/p.php",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'PROTOCOL')",
+          "http",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('https://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'PROTOCOL')",
+          "https",
+          "VARCHAR NOT NULL");
+      f.checkString("parse_url('http://bob@calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'USERINFO')",
+          "bob",
+          "VARCHAR NOT NULL");
+      f.checkNull("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " 'USERINFO')");
+      f.checkString("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+              + " 'AUTHORITY')",
+          "calcite.apache.org",
+          "VARCHAR NOT NULL");
+
+      // test with invalid partToExtract
+      f.checkNull("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " 'INVALID_PART_TO_EXTRACT')");
+      f.checkNull("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " 'HOST', 'k1')");
+
+      // test with invalid urlString
+      f.checkNull("parse_url('http:calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " 'HOST')");
+      f.checkNull("parse_url('calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " 'HOST')");
+      f.checkNull("parse_url('/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " 'HOST')");
+
+      // test with operands with null values
+      f.checkNull("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " cast(null as varchar))");
+      f.checkNull("parse_url('http://calcite.apache.org/path1/p.php?k1=v1&k2=v2#Ref1',"
+          + " cast(null as varchar), cast(null as varchar))");
+      f.checkNull("parse_url(cast(null as varchar), cast(null as varchar))");
+      f.checkNull("parse_url(cast(null as varchar), cast(null as varchar),"
+          + " cast(null as varchar))");
+    };
+    f0.forEachLibrary(list(SqlLibrary.HIVE, SqlLibrary.SPARK), consumer);
+  }
+
   @Test void testToBase64() {
     final SqlOperatorFixture f = fixture().withLibrary(SqlLibrary.MYSQL);
     f.setFor(SqlLibraryOperators.TO_BASE64);
@@ -4320,6 +4411,25 @@ public class SqlOperatorTest {
     f0.forEachLibrary(list(SqlLibrary.BIG_QUERY, SqlLibrary.MYSQL), consumer);
   }
 
+  @Test void testLevenshtein() {
+    final SqlOperatorFixture f0 = fixture().setFor(SqlLibraryOperators.LEVENSHTEIN);
+    f0.checkFails("^levenshtein('abc', 'abc')^",
+        "No match found for function signature LEVENSHTEIN\\(<CHARACTER>, <CHARACTER>\\)",
+        false);
+    final Consumer<SqlOperatorFixture> consumer = f -> {
+      f.checkScalar("levenshtein('', '')", 0, "INTEGER NOT NULL");
+      f.checkScalar("levenshtein('abc', 'abc')", 0, "INTEGER NOT NULL");
+      f.checkScalar("levenshtein('kitten', 'sitting')", 3, "INTEGER NOT NULL");
+      f.checkScalar("levenshtein('frog', 'fog')", 1, "INTEGER NOT NULL");
+      f.checkScalar("levenshtein(_UTF8'\u4F60\u597D', _UTF8'\u4F60\u5F88\u597D')",
+          1, "INTEGER NOT NULL");
+      f.checkNull("levenshtein(cast(null as varchar), 'abc')");
+      f.checkNull("levenshtein('abc', cast(null as varchar))");
+      f.checkNull("levenshtein(cast(null as varchar), cast(null as varchar))");
+    };
+    f0.forEachLibrary(list(SqlLibrary.HIVE, SqlLibrary.SPARK), consumer);
+  }
+
   @Test void testIfFunc() {
     final SqlOperatorFixture f = fixture();
     checkIf(f.withLibrary(SqlLibrary.BIG_QUERY));
@@ -4362,6 +4472,9 @@ public class SqlOperatorTest {
       f.checkString("left('abcd', -2)", "", "VARCHAR(4) NOT NULL");
       f.checkNull("left(cast(null as varchar(1)), -2)");
       f.checkNull("left('abcd', cast(null as Integer))");
+      // Test case for <a href="https://issues.apache.org/jira/browse/CALCITE-5859">[CALCITE-5859]
+      // Compile-time evaluation of LEFT(NULL, n) should not throw RuntimeException</a>
+      f.checkNull("left(null, 3)");
 
       // test for ByteString
       f.checkString("left(x'ABCdef', 1)", "ab", "VARBINARY(3) NOT NULL");
@@ -6887,6 +7000,77 @@ public class SqlOperatorTest {
         BigDecimal.valueOf(42, 0), "DECIMAL(2, 3) NOT NULL");
     f.checkNull("truncate(cast(null as integer))");
     f.checkNull("truncate(cast(null as double))");
+  }
+
+  @Test void testSafeMultiplyFunc() {
+    final SqlOperatorFixture f0 = fixture().setFor(SqlLibraryOperators.SAFE_MULTIPLY);
+    f0.checkFails("^safe_multiply(2, 3)^",
+        "No match found for function signature "
+        + "SAFE_MULTIPLY\\(<NUMERIC>, <NUMERIC>\\)", false);
+    final SqlOperatorFixture f = f0.withLibrary(SqlLibrary.BIG_QUERY);
+    // Basic test for each of the 9 2-permutations of BIGINT, DECIMAL, and FLOAT
+    f.checkScalar("safe_multiply(cast(20 as bigint), cast(20 as bigint))",
+        "400", "BIGINT");
+    f.checkScalar("safe_multiply(cast(20 as bigint), cast(1.2345 as decimal(5,4)))",
+        "24.6900", "DECIMAL(19, 4)");
+    f.checkScalar("safe_multiply(cast(1.2345 as decimal(5,4)), cast(20 as bigint))",
+        "24.6900", "DECIMAL(19, 4)");
+    f.checkScalar("safe_multiply(cast(1.2345 as decimal(5,4)), "
+        + "cast(2.0 as decimal(2, 1)))", "2.46900", "DECIMAL(7, 5)");
+    f.checkScalar("safe_multiply(cast(3 as double), cast(3 as bigint))",
+        "9.0", "DOUBLE");
+    f.checkScalar("safe_multiply(cast(3 as bigint), cast(3 as double))",
+        "9.0", "DOUBLE");
+    f.checkScalar("safe_multiply(cast(3 as double), cast(1.2345 as decimal(5, 4)))",
+        "3.7035", "DOUBLE");
+    f.checkScalar("safe_multiply(cast(1.2345 as decimal(5, 4)), cast(3 as double))",
+        "3.7035", "DOUBLE");
+    f.checkScalar("safe_multiply(cast(3 as double), cast(3 as double))",
+        "9.0", "DOUBLE");
+    // Tests for + and - Infinity
+    f.checkScalar("safe_multiply(cast('Infinity' as double), cast(3 as double))",
+        "Infinity", "DOUBLE");
+    f.checkScalar("safe_multiply(cast('-Infinity' as double), cast(3 as double))",
+        "-Infinity", "DOUBLE");
+    f.checkScalar("safe_multiply(cast('-Infinity' as double), "
+        + "cast('Infinity' as double))", "-Infinity", "DOUBLE");
+    // Tests for NaN
+    f.checkScalar("safe_multiply(cast('NaN' as double), cast(3 as bigint))",
+        "NaN", "DOUBLE");
+    f.checkScalar("safe_multiply(cast('NaN' as double), cast(1.23 as decimal(3, 2)))",
+        "NaN", "DOUBLE");
+    f.checkScalar("safe_multiply(cast('NaN' as double), cast('Infinity' as double))",
+        "NaN", "DOUBLE");
+    f.checkScalar("safe_multiply(cast(3 as bigint), cast('NaN' as double))",
+        "NaN", "DOUBLE");
+    f.checkScalar("safe_multiply(cast(1.23 as decimal(3, 2)), cast('NaN' as double))",
+        "NaN", "DOUBLE");
+    // Overflow test for each pairing
+    f.checkNull("safe_multiply(cast(20 as bigint), "
+        + "cast(9223372036854775807 as bigint))");
+    f.checkNull("safe_multiply(cast(20 as bigint), "
+        + "cast(-9223372036854775807 as bigint))");
+    f.checkNull("safe_multiply(cast(10 as bigint), cast(3.5e75 as DECIMAL(76, 0)))");
+    f.checkNull("safe_multiply(cast(10 as bigint), cast(-3.5e75 as DECIMAL(76, 0)))");
+    f.checkNull("safe_multiply(cast(3.5e75 as DECIMAL(76, 0)), cast(10 as bigint))");
+    f.checkNull("safe_multiply(cast(-3.5e75 as DECIMAL(76, 0)), cast(10 as bigint))");
+    f.checkNull("safe_multiply(cast(3.5e75 as DECIMAL(76, 0)), "
+        + "cast(1.5 as DECIMAL(2, 1)))");
+    f.checkNull("safe_multiply(cast(-3.5e75 as DECIMAL(76, 0)), "
+        + "cast(1.5 as DECIMAL(2, 1)))");
+    f.checkNull("safe_multiply(cast(1.7e308 as double), cast(1.23 as decimal(3, 2)))");
+    f.checkNull("safe_multiply(cast(-1.7e308 as double), cast(1.2 as decimal(2, 1)))");
+    f.checkNull("safe_multiply(cast(1.2 as decimal(2, 1)), cast(1.7e308 as double))");
+    f.checkNull("safe_multiply(cast(1.2 as decimal(2, 1)), cast(-1.7e308 as double))");
+    f.checkNull("safe_multiply(cast(1.7e308 as double), cast(3 as bigint))");
+    f.checkNull("safe_multiply(cast(-1.7e308 as double), cast(3 as bigint))");
+    f.checkNull("safe_multiply(cast(3 as bigint), cast(1.7e308 as double))");
+    f.checkNull("safe_multiply(cast(3 as bigint), cast(-1.7e308 as double))");
+    f.checkNull("safe_multiply(cast(3 as double), cast(1.7e308 as double))");
+    f.checkNull("safe_multiply(cast(3 as double), cast(-1.7e308 as double))");
+    // Check that null argument retuns null
+    f.checkNull("safe_multiply(cast(null as double), cast(3 as bigint))");
+    f.checkNull("safe_multiply(cast(3 as double), cast(null as bigint))");
   }
 
   @Test void testNullifFunc() {

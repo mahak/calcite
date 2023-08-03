@@ -317,7 +317,8 @@ public abstract class SqlLibraryOperators {
       SqlBasicFunction.create("SPLIT",
           ReturnTypes.ARG0
               .andThen(SqlLibraryOperators::deriveTypeSplit)
-              .andThen(SqlTypeTransforms.TO_ARRAY),
+              .andThen(SqlTypeTransforms.TO_ARRAY)
+              .andThen(SqlTypeTransforms.TO_NULLABLE),
           OperandTypes.or(OperandTypes.CHARACTER_CHARACTER,
               OperandTypes.CHARACTER,
               OperandTypes.BINARY_BINARY,
@@ -393,6 +394,14 @@ public abstract class SqlLibraryOperators {
   @LibraryOperator(libraries = {POSTGRESQL})
   public static final SqlFunction SUBSTR_POSTGRESQL =
       SUBSTR.withKind(SqlKind.SUBSTR_POSTGRESQL);
+
+  /** The "PARSE_URL(urlString, partToExtract [, keyToExtract] )" function. */
+  @LibraryOperator(libraries = {HIVE, SPARK})
+  public static final SqlFunction PARSE_URL =
+      SqlBasicFunction.create("PARSE_URL",
+              ReturnTypes.VARCHAR_NULLABLE,
+              OperandTypes.STRING_STRING_OPTIONAL_STRING,
+              SqlFunctionCategory.STRING);
 
   /** The "GREATEST(value, value)" function. */
   @LibraryOperator(libraries = {BIG_QUERY, ORACLE})
@@ -1267,6 +1276,14 @@ public abstract class SqlLibraryOperators {
           OperandTypes.CHARACTER)
           .withFunctionType(SqlFunctionCategory.STRING);
 
+  /** The "LEVENSHTEIN(string1, string2)" function. */
+  @LibraryOperator(libraries = {HIVE, SPARK})
+  public static final SqlFunction LEVENSHTEIN =
+      SqlBasicFunction.create("LEVENSHTEIN",
+          ReturnTypes.INTEGER_NULLABLE,
+          OperandTypes.STRING_STRING,
+          SqlFunctionCategory.STRING);
+
   @LibraryOperator(libraries = {BIG_QUERY, MYSQL})
   public static final SqlFunction FROM_BASE64 =
       SqlBasicFunction.create("FROM_BASE64",
@@ -1625,6 +1642,15 @@ public abstract class SqlLibraryOperators {
       new SqlTimestampDiffFunction("DATETIME_DIFF",
           OperandTypes.family(SqlTypeFamily.TIMESTAMP, SqlTypeFamily.TIMESTAMP,
               SqlTypeFamily.ANY));
+
+  /** The "SAFE_MULTIPLY(numeric1, numeric2)" function; equivalent to the {@code *} operator but
+   * returns null if overflow occurs. */
+  @LibraryOperator(libraries = {BIG_QUERY})
+  public static final SqlFunction SAFE_MULTIPLY =
+      SqlBasicFunction.create("SAFE_MULTIPLY",
+          ReturnTypes.PRODUCT_FORCE_NULLABLE,
+          OperandTypes.NUMERIC_NUMERIC,
+          SqlFunctionCategory.NUMERIC);
 
   /** The "CHAR(n)" function; returns the character whose ASCII code is
    * {@code n} % 256, or null if {@code n} &lt; 0. */
