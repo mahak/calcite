@@ -4376,6 +4376,30 @@ public class SqlOperatorTest {
     f0.forEachLibrary(libraries, consumer);
   }
 
+  @Test void testSoundexSparkFunc() {
+    final SqlOperatorFixture f0 = fixture().setFor(SqlLibraryOperators.SOUNDEX_SPARK);
+    f0.checkFails("^soundex('tech on the net')^",
+        "No match found for function signature SOUNDEX\\(<CHARACTER>\\)",
+        false);
+    final Consumer<SqlOperatorFixture> consumer = f -> {
+      f.checkString("SOUNDEX('TECH ON THE NET')", "T253", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX('Miller')", "M460", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX('miler')", "M460", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX('myller')", "M460", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX('muller')", "M460", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX('m')", "M000", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX('mu')", "M000", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX('mile')", "M400", "VARCHAR NOT NULL");
+      // note: it's different with soundex for bigquery/mysql/oracle/pg
+      f.checkString("SOUNDEX(_UTF8'\u5B57\u5B57')",
+          "字字", "VARCHAR NOT NULL");
+      f.checkString("SOUNDEX(_UTF8'\u5B57\u5B57\u5B57\u5B57')",
+          "字字字字", "VARCHAR NOT NULL");
+      f.checkNull("SOUNDEX(cast(null as varchar(1)))");
+    };
+    f0.forEachLibrary(list(SqlLibrary.SPARK), consumer);
+  }
+
   @Test void testDifferenceFunc() {
     final SqlOperatorFixture f = fixture()
         .setFor(SqlLibraryOperators.DIFFERENCE)
@@ -7627,27 +7651,27 @@ public class SqlOperatorTest {
         false);
     final SqlOperatorFixture f = f0.withLibrary(SqlLibrary.BIG_QUERY);
     f.checkScalar("SPLIT('h,e,l,l,o')", "[h, e, l, l, o]",
-        "CHAR(9) NOT NULL ARRAY NOT NULL");
+        "VARCHAR NOT NULL ARRAY NOT NULL");
     f.checkScalar("SPLIT('h-e-l-l-o', '-')", "[h, e, l, l, o]",
-        "CHAR(9) NOT NULL ARRAY NOT NULL");
+        "VARCHAR NOT NULL ARRAY NOT NULL");
     f.checkScalar("SPLIT('hello', '-')", "[hello]",
-        "CHAR(5) NOT NULL ARRAY NOT NULL");
+        "VARCHAR NOT NULL ARRAY NOT NULL");
     f.checkScalar("SPLIT('')", "[]",
-        "CHAR(0) NOT NULL ARRAY NOT NULL");
+        "VARCHAR NOT NULL ARRAY NOT NULL");
     f.checkScalar("SPLIT('', '-')", "[]",
-        "CHAR(0) NOT NULL ARRAY NOT NULL");
+        "VARCHAR NOT NULL ARRAY NOT NULL");
     f.checkNull("SPLIT(null)");
     f.checkNull("SPLIT('hello', null)");
 
     // In ASCII, x'41' = 'A', x'42' = 'B', x'43' = 'C'
     f.checkScalar("SPLIT(x'414243', x'ff')", "[ABC]",
-        "BINARY(3) NOT NULL ARRAY NOT NULL");
+        "VARBINARY NOT NULL ARRAY NOT NULL");
     f.checkScalar("SPLIT(x'414243', x'41')", "[, BC]",
-        "BINARY(3) NOT NULL ARRAY NOT NULL");
+        "VARBINARY NOT NULL ARRAY NOT NULL");
     f.checkScalar("SPLIT(x'414243', x'42')", "[A, C]",
-        "BINARY(3) NOT NULL ARRAY NOT NULL");
+        "VARBINARY NOT NULL ARRAY NOT NULL");
     f.checkScalar("SPLIT(x'414243', x'43')", "[AB, ]",
-        "BINARY(3) NOT NULL ARRAY NOT NULL");
+        "VARBINARY NOT NULL ARRAY NOT NULL");
     f.checkFails("^SPLIT(x'aabbcc')^",
         "Call to function 'SPLIT' with argument of type 'BINARY\\(3\\)' "
             + "requires extra delimiter argument", false);

@@ -333,7 +333,9 @@ public abstract class SqlLibraryOperators {
           Static.RESOURCE.delimiterIsRequired(
               operatorBinding.getOperator().getName(), type.toString()));
     }
-    return type;
+
+    SqlTypeName typeName = SqlTypeUtil.isBinary(type) ? SqlTypeName.VARBINARY : SqlTypeName.VARCHAR;
+    return operatorBinding.getTypeFactory().createSqlType(typeName);
   }
 
   /** The "STRPOS(string, substring)" function. */
@@ -829,6 +831,12 @@ public abstract class SqlLibraryOperators {
           ReturnTypes.VARCHAR_4_NULLABLE,
           OperandTypes.CHARACTER,
           SqlFunctionCategory.STRING);
+
+  /** The variant of the SOUNDEX operator. */
+  @LibraryOperator(libraries = {SPARK})
+  public static final SqlFunction SOUNDEX_SPARK =
+      ((SqlBasicFunction) SOUNDEX).withKind(SqlKind.SOUNDEX_SPARK)
+          .withReturnTypeInference(ReturnTypes.VARCHAR_NULLABLE);
 
   @LibraryOperator(libraries = {POSTGRESQL})
   public static final SqlFunction DIFFERENCE =
